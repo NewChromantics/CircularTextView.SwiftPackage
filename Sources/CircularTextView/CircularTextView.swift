@@ -28,11 +28,6 @@ public extension UnitPoint
 //	style text in usual way on top of this view
 public struct CircularTextView: View 
 {
-	//	gr: @State to cache - new .text creates whole new view so this doesnt need resetting
-	//		this may need to change for future animations
-	@State private var characterWidths: [Character:Double] = [:]
-	@State private var letterHeight : CGFloat = 0.0
-	
 	//	read current font
 	@Environment(\.font) var font
 	
@@ -40,29 +35,30 @@ public struct CircularTextView: View
 	
 	var startingAngle : Angle
 	
-	//	align letter rotations at the top (0) bottom (1.0) or middle (0.5)
-	let kerningAlignment : VerticalAlignment = .center
-	var debugTextAlignment = true
+	//	align letter rotations at the top, bottom or middle
+	let kerningAlignment : VerticalAlignment
+	var debugTextAlignment = false
 	
 	//	see comments on usage - this should be 1.0 but is squashed together
-	var magicKerningScalar : CGFloat { 6.0 }
+	//	6.0 is about right for all cases... but I feel must be related to font size
+	var magicKerningScalar : CGFloat
+	{
+		return 6.2
+	}	
 	
-	public init(_ text: String, startingAngle: Angle = .degrees(0))
+	public init(_ text:String,startingAngle:Angle = .degrees(0), kerningAlignment:VerticalAlignment = .center,debug:Bool=false)
 	{
 		self.text = text
 		self.startingAngle = startingAngle
+		self.kerningAlignment = kerningAlignment
+		self.debugTextAlignment = debug
 	}
 	
-	func ResetCache()
-	{
-		characterWidths = [:]
-	}
-	
-	func GetColour(_ index:Int) -> Color
+	func GetDebugColour(_ index:Int) -> Color
 	{
 		let colours : [Color] = [.red,.orange,.yellow,.green,.cyan,.blue,.purple,.pink]
 		let colour = colours[ index % colours.count]
-		return colour.opacity( debugTextAlignment ? 0.7 : 0.0 )
+		return colour.opacity( 0.7 )
 	}
 	
 	public var body: some View 
@@ -90,21 +86,18 @@ public struct CircularTextView: View
 			context.translateBy(x: canvasSize.width/2.0, y: canvasSize.height/2.0)
 			
 			//for char in Array(text.enumerated())
+			var index = 0
 			for textElement in texts
 			{
+				index += 1
 				/*
 				 let textElement = Text(String(char.element))
 				 .foregroundColor(.yellow)
 				 .font(font)
 				 */
 				let resolved = context.resolve(textElement)
-				var charSize = resolved.measure(in: CGSize(width: 900, height: 900))
-				
-				//	gr: magic kerning number - this should be 1.0
-				//		in swiftui 0.0 is default
-				charSize.width *= magicKerningScalar
-				//print("Char \(char.element) height = \(charSize.height)")
-				
+				let measuredCharSize = resolved.measure(in: CGSize(width: 900, height: 900))
+				var charSize = measuredCharSize
 				let letterHeight = charSize.height
 				
 				//	height is consistent for whole string
@@ -117,6 +110,12 @@ public struct CircularTextView: View
 						case _:	return 0.5
 					}
 				}
+
+				//	gr: magic kerning number - this should be 1.0
+				//		in swiftui 0.0 is default
+				let kerningScalar = magicKerningScalar//* (letterHeight*kerningAlignmentLetterHeight)
+				charSize.width *= kerningScalar
+				//print("Char \(char.element) height = \(charSize.height)")
 				
 				let baselineRadius = viewRadius - (letterHeight*kerningAlignmentLetterHeight)
 				let circumference = times2pi( baselineRadius )
@@ -140,7 +139,19 @@ public struct CircularTextView: View
 				//	move out to edge
 				let drawY = baselineRadius * -1.0
 				context.rotate(by: angleOfChar)
+				
 				context.draw(resolved, at: CGPoint(x:drawX,y:drawY), anchor: UnitPoint(vertical: kerningAlignment,horzional: .center) )
+
+				if debugTextAlignment
+				{
+					let colour = GetDebugColour(index)
+					let anchorX = measuredCharSize.width * -0.5
+					let anchorY = measuredCharSize.height * -kerningAlignmentLetterHeight
+					let charRect = CGRect(x:drawX+anchorX,y:drawY+anchorY,width: measuredCharSize.width, height:measuredCharSize.height)
+					context.fill(
+						Path(roundedRect: charRect, cornerSize: .zero ),
+						with: .color(colour) )
+				}
 				
 				if debugTextAlignment
 				{
@@ -162,23 +173,81 @@ public struct CircularTextView: View
 		 //	thus.... we should ditch radius and use geometry reader?
 		 .frame(width: radius*2.0, height: radius*2.0,alignment: .center)
 		 */
-		.onChange(of: self.text)
-		{
-			ResetCache()
-		}
+
 	}
-	
-	
 }
 
 
+//	only for preview
+internal enum VerticalAlignOption : CaseIterable, Identifiable
+{
+	var id: Self { self }
+	
+	case Top,Middle,Bottom
+	
+	var verticalAlignment : VerticalAlignment
+	{
+		switch(self)
+		{
+			case .Top:	return VerticalAlignment.top
+			case .Middle:	return VerticalAlignment.center
+			case .Bottom:	return VerticalAlignment.bottom
+		}
+	}
+}
 
+
+//	@Previewable only in 14+
+@available(macOS 14.0, *) 
 #Preview
 {
-	CircularTextView("hello")
-		.frame(width:100)
-		.background(.blue)
-		.fontWeight(.bold)
-		.font(.system(size: 20))
-		.foregroundColor(.red)
+	@Previewable @State var verticalKerningAlignmentOption : VerticalAlignOption = .Middle
+	@Previewable @State var showDebug = true
+	@Previewable @State var startingAngleDegrees : Float = -90
+	@Previewable @State var radius : CGFloat = 300
+	@Previewable @State var fontSize : CGFloat = 50
+	var startingAngle : Angle {	Angle.degrees(Double(startingAngleDegrees))	}
+	var verticalKerningAlignment : VerticalAlignment	{	verticalKerningAlignmentOption.verticalAlignment	}
+	
+	CircularTextView("hello",startingAngle: startingAngle, kerningAlignment:verticalKerningAlignment,debug: showDebug)
+		.frame(width:radius,height:radius)
+		.background( Circle().fill(.black) )
+		.font(.system(size: fontSize))
+		.foregroundColor(.white)
+	
+	VStack
+	{
+		HStack
+		{
+			Text("Radius: \(Int(radius))")
+				.frame(width:100)
+			Slider(value:$radius,in: 1...400)
+		}
+		
+		HStack
+		{
+			Text("Font Size: \(Int(fontSize))")
+				.frame(width:100)
+			Slider(value:$fontSize,in: 1...400)
+		}
+		
+		
+		Toggle("Show Debug",isOn:$showDebug)
+		
+		HStack
+		{
+			Text("Starting angle: \(Int(startingAngleDegrees)) degrees")
+				.frame(width:100)
+			Slider(value:$startingAngleDegrees,in: -180...360)
+		}
+		
+		Picker("Vertical Kerning Alignment", selection: $verticalKerningAlignmentOption) 
+		{
+			ForEach(VerticalAlignOption.allCases) 
+			{
+				Text(String("\($0)"))
+			}
+		}
+	}
+	.padding(20)
 }
