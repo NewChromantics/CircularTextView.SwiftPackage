@@ -10,8 +10,8 @@ let package = Package(
 	name: "CircularTextView",
 	
 	platforms: [
-		.iOS(.v13),
-		.macOS(.v12)	//	Cavnas is 12+	
+		.iOS(.v15),		//	Canvas 15+
+		.macOS(.v12)	//	Canvas is 12+	
 	],
 	
 	products: [

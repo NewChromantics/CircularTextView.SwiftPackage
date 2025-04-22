@@ -198,7 +198,7 @@ internal enum VerticalAlignOption : CaseIterable, Identifiable
 
 
 //	@Previewable only in 14+
-@available(macOS 14.0, *) 
+@available(macOS 14.0, iOS 17.0, *) 
 #Preview
 {
 	@Previewable @State var verticalKerningAlignmentOption : VerticalAlignOption = .Middle
