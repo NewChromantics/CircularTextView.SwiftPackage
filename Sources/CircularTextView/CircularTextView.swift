@@ -34,21 +34,16 @@ public struct CircularTextView: View
 	var text : String
 	
 	var startingAngle : Angle
+	var clockwise = true
 	
 	//	align letter rotations at the top, bottom or middle
 	let kerningAlignment : VerticalAlignment
 	var debugTextAlignment = false
 	
-	//	see comments on usage - this should be 1.0 but is squashed together
-	//	6.0 is about right for all cases... but I feel must be related to font size
-	var magicKerningScalar : CGFloat
-	{
-		return 6.2
-	}	
-	
-	public init(_ text:String,startingAngle:Angle = .degrees(0), kerningAlignment:VerticalAlignment = .center,debug:Bool=false)
+	public init(_ text:String,startingAngle:Angle = .degrees(0), kerningAlignment:VerticalAlignment = .center,clockwise:Bool=true,debug:Bool=false)
 	{
 		self.text = text
+		self.clockwise = clockwise
 		self.startingAngle = startingAngle
 		self.kerningAlignment = kerningAlignment
 		self.debugTextAlignment = debug
@@ -78,26 +73,16 @@ public struct CircularTextView: View
 			
 			//	how many pixels around the circumference we've moved
 			var circumferenceX = 0.0
-			//let circumference = times2pi( baselineRadius )
-			
-			let times2pi : (Double) -> Double = { $0 * 2 * .pi }
 			
 			//	make all operations start at the center
 			context.translateBy(x: canvasSize.width/2.0, y: canvasSize.height/2.0)
 			
-			//for char in Array(text.enumerated())
-			var index = 0
-			for textElement in texts
+			for characterIndex in 0..<texts.count
 			{
-				index += 1
-				/*
-				 let textElement = Text(String(char.element))
-				 .foregroundColor(.yellow)
-				 .font(font)
-				 */
+				let textElement = texts[characterIndex]
 				let resolved = context.resolve(textElement)
-				let measuredCharSize = resolved.measure(in: CGSize(width: 900, height: 900))
-				var charSize = measuredCharSize
+				let charSize = resolved.measure(in: CGSize(width: 900, height: 900))
+				//print("Char \(char.element) height = \(charSize.height)")
 				let letterHeight = charSize.height
 				
 				//	height is consistent for whole string
@@ -110,44 +95,40 @@ public struct CircularTextView: View
 						case _:	return 0.5
 					}
 				}
-
-				//	gr: magic kerning number - this should be 1.0
-				//		in swiftui 0.0 is default
-				let kerningScalar = magicKerningScalar//* (letterHeight*kerningAlignmentLetterHeight)
-				charSize.width *= kerningScalar
-				//print("Char \(char.element) height = \(charSize.height)")
 				
 				let baselineRadius = viewRadius - (letterHeight*kerningAlignmentLetterHeight)
-				let circumference = times2pi( baselineRadius )
 				
 				//	move x pos across so we have the center
-				//	but not if we're the first
-				//if char.offset > 0
-				if circumferenceX > 0.0
+				//	but not if we're the first so left side of character hits the starting angle
+				if characterIndex > 0
 				{
 					circumferenceX += charSize.width * 0.5
 				}
 				
-				//	pos along circumference to angle
-				var angleOfChar = Angle.radians( circumferenceX / circumference )
+				//	convert our pos along [baseline] circumference to angle
+				let circumference = (2.0 * .pi * baselineRadius)
+				//	as 0...1
+				let normalisedPosAlongCircumference = (circumferenceX / circumference) * (clockwise ? 1.0 : -1.0)
+				//	0..1 to angle
+				var angleOfChar = Angle.degrees( normalisedPosAlongCircumference * 360.0 )
 				
 				//	expecting this to be -startingAngle, but as Y is flipped, we add
-				angleOfChar += startingAngle
+				angleOfChar += clockwise ? startingAngle : (startingAngle+Angle.degrees(180))
 				
 				//	aligning by anchor so no X translation
 				let drawX = 0.0
 				//	move out to edge
-				let drawY = baselineRadius * -1.0
+				let drawY = baselineRadius * (clockwise ? -1.0 : 1.0)
 				context.rotate(by: angleOfChar)
 				
 				context.draw(resolved, at: CGPoint(x:drawX,y:drawY), anchor: UnitPoint(vertical: kerningAlignment,horzional: .center) )
 
 				if debugTextAlignment
 				{
-					let colour = GetDebugColour(index)
-					let anchorX = measuredCharSize.width * -0.5
-					let anchorY = measuredCharSize.height * -kerningAlignmentLetterHeight
-					let charRect = CGRect(x:drawX+anchorX,y:drawY+anchorY,width: measuredCharSize.width, height:measuredCharSize.height)
+					let colour = GetDebugColour(characterIndex)
+					let anchorX = charSize.width * -0.5
+					let anchorY = charSize.height * -kerningAlignmentLetterHeight
+					let charRect = CGRect(x:drawX+anchorX,y:drawY+anchorY,width: charSize.width, height:charSize.height)
 					context.fill(
 						Path(roundedRect: charRect, cornerSize: .zero ),
 						with: .color(colour) )
@@ -210,6 +191,12 @@ internal enum VerticalAlignOption : CaseIterable, Identifiable
 	var verticalKerningAlignment : VerticalAlignment	{	verticalKerningAlignmentOption.verticalAlignment	}
 	
 	CircularTextView("hello",startingAngle: startingAngle, kerningAlignment:verticalKerningAlignment,debug: showDebug)
+		.frame(width:radius,height:radius)
+		.background( Circle().fill(.black) )
+		.font(.system(size: fontSize))
+		.foregroundColor(.white)
+	
+	CircularTextView("anti-clockwise",startingAngle: Angle.degrees(180), kerningAlignment:verticalKerningAlignment,clockwise:false, debug: showDebug)
 		.frame(width:radius,height:radius)
 		.background( Circle().fill(.black) )
 		.font(.system(size: fontSize))
